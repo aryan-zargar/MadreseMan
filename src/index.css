@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+
+@font-face {
+  font-family: "Rubik";
+  src: url("./assets/Rubik.ttf") format('truetype');
+}
+
+@font-face {
+  font-family: "sgkara";
+  src: url("./assets/SGKara.ttf") format('truetype');
+}
+
+body {
+  font-family: "Rubik";
+
+}
+
+.hero-section {
+  background-image: url('./assets/bg.jpg');
+  background-size: cover;
+}
+.login_bg{
+  background-image: url('./assets/h-wp.jpg');
+  background-size: cover;
+}
+.login_secondary_bg{
+  background-image: url('./assets/v-wp.jpg');
+  background-size: 140%;
+}
+
+.scrl::-webkit-scrollbar {
+  width: 3px;
+  /* Example: Set the scrollbar width */
+}
+
+.scrl::-webkit-scrollbar-track {
+  /* Example: Style the track background */
+  margin-top: 40px ;
+  background: #f1f1f1;
+}
+
+.scrl::-webkit-scrollbar-thumb {
+  /* Example: Style the thumb */
+  background: #888;
+  
+}
