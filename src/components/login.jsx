@@ -5,34 +5,50 @@ import axios from 'axios'
 import { FiUser, FiLock, FiLogIn, FiMail } from 'react-icons/fi'
 import { BiShield } from 'react-icons/bi'
 import { MdSchool } from 'react-icons/md'
+import { ArcaptchaWidget } from "arcaptcha-react";
 
 export default function Login() {
     const [username, setUsername] = useState("")
     const [password, setPassword] = useState("")
     const [isHovered, setIsHovered] = useState(false)
     const [focusedField, setFocusedField] = useState(null)
-
+    const [ArRef, setArRef] = useState(React.createRef())
+    const [CaptchaApproved, setCaptchaApproval] = useState(false)
     console.log(username)
     console.log(password)
 
     function Submit() {
         if (username != "" && password != "") {
-            axios.post(`http://localhost:5217/api/v1/auth/login?username=${username}&password=${password}`, {}).then((res) => {
-                window.location.pathname = `/emailConfirmation/${res.data.email}`
-            }).catch(
-                (res) => {
-                    Swal.fire({
-                        title: "خطا",
-                        text: (res.response.data.error),
-                        icon: "error",
-                        draggable: true,
-                        confirmButtonColor: "#2563eb",
-                        background: "#1e1e2f",
-                        color: "#fff",
-                        backdrop: "rgba(0,0,0,0.7)"
-                    });
-                }
-            )
+            if (CaptchaApproved == true) {
+                axios.post(`http://localhost:5217/api/v1/auth/login?username=${username}&password=${password}`, {}).then((res) => {
+                    window.location.pathname = `/emailConfirmation/${res.data.email}`
+                }).catch(
+                    (res) => {
+                        Swal.fire({
+                            title: "خطا",
+                            text: (res.response.data.error),
+                            icon: "error",
+                            draggable: true,
+                            confirmButtonColor: "#2563eb",
+                            background: "#1e1e2f",
+                            color: "#fff",
+                            backdrop: "rgba(0,0,0,0.7)"
+                        });
+                    }
+                )
+            }
+            else {
+                Swal.fire({
+                    title: "خطا",
+                    text: "لطفا کپچا را کامل کنید",
+                    icon: "error",
+                    draggable: true,
+                    confirmButtonColor: "#2563eb",
+                    background: "#1e1e2f",
+                    color: "#fff",
+                    backdrop: "rgba(0,0,0,0.7)"
+                });
+            }
         }
         else {
             Swal.fire({
@@ -47,7 +63,9 @@ export default function Login() {
             });
         }
     }
-
+    function getToken() {
+        setCaptchaApproval(true)
+    }
     const handleKeyPress = (e) => {
         if (e.key === 'Enter') {
             Submit()
@@ -56,7 +74,7 @@ export default function Login() {
 
     return (
         <div className='min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-blue-900 p-4 relative overflow-hidden' dir='rtl'>
-            
+
             {/* Animated Background Elements */}
             <div className="absolute inset-0 overflow-hidden">
                 <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
@@ -68,10 +86,10 @@ export default function Login() {
             {/* Main Container */}
             <div className='relative w-full max-w-6xl bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden'>
                 <div className='flex flex-col lg:flex-row'>
-                    
+
                     {/* Right Side - Brand Section (Order changes for RTL) */}
                     <div className='w-full lg:w-2/5 bg-gradient-to-br from-indigo-600 via-blue-700 to-purple-700 p-8 lg:p-12 flex flex-col items-center justify-center relative overflow-hidden order-2 lg:order-1'>
-                        
+
                         {/* Animated shapes */}
                         <div className="absolute inset-0 opacity-20">
                             <div className="absolute top-0 left-0 w-40 h-40 bg-white rounded-full filter blur-3xl animate-pulse"></div>
@@ -90,10 +108,10 @@ export default function Login() {
                         <div className='relative z-10 text-center transform hover:scale-105 transition-transform duration-500'>
                             <div className="relative inline-block">
                                 <div className="absolute inset-0 bg-white rounded-full blur-xl opacity-50 animate-pulse"></div>
-                                <img 
-                                    src={Logo} 
-                                    className='w-32 h-32 lg:w-40 lg:h-40 object-contain relative' 
-                                    alt="MadreseMan" 
+                                <img
+                                    src={Logo}
+                                    className='w-32 h-32 lg:w-40 lg:h-40 object-contain relative'
+                                    alt="MadreseMan"
                                 />
                             </div>
                             <div style={{ fontFamily: "sgkara" }} className='mt-6'>
@@ -129,12 +147,12 @@ export default function Login() {
                     </div>
 
                     {/* Left Side - Login Form (Order changes for RTL) */}
-                    <div className='w-full lg:w-3/5 bg-white/95 backdrop-blur-xl p-8 lg:p-12 order-1 lg:order-2'>
+                    <div className='w-full lg:w-3/5 bg-white backdrop-blur-xl p-8 lg:p-12 order-1 lg:order-2'>
                         <div className='max-w-md mx-auto'>
-                            
+
                             {/* Header */}
                             <div className='text-center mb-10'>
-                                
+
                                 <h1 className='text-3xl lg:text-4xl font-bold text-gray-800 mb-2'>
                                     خوش آمدید!
                                 </h1>
@@ -145,7 +163,7 @@ export default function Login() {
 
                             {/* Form */}
                             <form className='space-y-6' onKeyPress={handleKeyPress}>
-                                
+
                                 {/* Username Field */}
                                 <div className='space-y-2'>
                                     <label className="block text-sm font-medium text-gray-700 mr-1">
@@ -191,13 +209,26 @@ export default function Login() {
                                         <div className={`absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-indigo-600 to-blue-600 transition-all duration-500 ${focusedField === 'password' ? 'w-full' : 'w-0'}`}></div>
                                     </div>
                                 </div>
+                                <div className='space-y-2 flex justify-center items-center'>
+                                    <div className={`relative group transition-all duration-300 ${focusedField === 'password' ? 'transform scale-[1.02]' : ''}`}>
+                                        <ArcaptchaWidget
+                                            ref={ArRef}
+                                            site-key="k1cuucaatn"
+                                            callback={getToken}
+                                            className="w-full"
+                                            theme="light"
+                                            lang="fa"
+                                            required
+                                        />
+                                    </div>
+                                </div>
 
                                 {/* Forgot Password */}
-                                <div className='flex justify-end'>
+                                {/* <div className='flex justify-end'>
                                     <a href="#" className='text-sm text-indigo-600 hover:text-indigo-800 transition-colors duration-300 hover:underline'>
                                         گذرواژه خود را فراموش کرده‌اید؟
                                     </a>
-                                </div>
+                                </div> */}
 
                                 {/* Submit Button */}
                                 <div className='pt-4'>
