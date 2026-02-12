@@ -56,7 +56,7 @@ function App() {
             {/* Main Content - Takes full width on mobile, flex-1 on desktop */}
             <div className={`
               flex-1 transition-all duration-500 
-              ${isMobile ? 'p-4 pb-24' : 'p-6'}
+              ${isMobile ? 'p-4 pb-24' : ''}
               order-2 md:order-1
             `}>
               <BrowserRouter>

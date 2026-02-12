@@ -1,4 +1,7 @@
 import React, { useEffect, useState } from 'react'
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import Swal from 'sweetalert2'
 import Logo from '../assets/MadreseManLogo.png'
 import { useParams, useHistory } from 'react-router-dom'
@@ -11,6 +14,7 @@ import {
 } from 'recharts'
 import { FaCashRegister, FaFilePdf, FaRegFileExcel, FaRegFilePdf } from 'react-icons/fa'
 import _ from 'lodash'
+import { pdf, Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
 
 export default function BudgetManagement() {
     const [mailSent, setMailSent] = useState(false)
@@ -337,6 +341,168 @@ export default function BudgetManagement() {
         { month: 'شهریور', income: 105, expense: 88, profit: 17 },
     ]
 
+
+    const exportBudgetToCSVSimple = () => {
+        const headers = ['Budget Name', 'Sum of Withdraws', 'Sum of Deposits', 'Description', 'Budget Amount'];
+
+        // Create a copy of budgets instead of referencing
+        var tempbudgets = JSON.parse(JSON.stringify(budgets)); // Deep copy
+
+        for (let index = 0; index < tempbudgets.length; index++) {
+            const element = tempbudgets[index];
+            var SelectedBudgetTransactionList = _.filter(transactions, { "budget_id": element.id });
+            var DepositTransactions = _.filter(SelectedBudgetTransactionList, { "is_deposit": true });
+            var WithdrawTransactions = _.filter(SelectedBudgetTransactionList, { "is_deposit": false });
+
+            var DepositSum = 0;
+            var WithdrawSum = 0;
+
+            for (let index = 0; index < DepositTransactions.length; index++) {
+                const element = DepositTransactions[index];
+                DepositSum += element.transaction_amount;
+            }
+
+            for (let index = 0; index < WithdrawTransactions.length; index++) {
+                const element = WithdrawTransactions[index];
+                WithdrawSum += element.transaction_amount;
+            }
+
+            tempbudgets[index].total_withdraw = WithdrawSum;
+            tempbudgets[index].total_deposit = DepositSum;
+        }
+
+        const escapeCSV = (str) => {
+            if (str === null || str === undefined) return '';
+            const stringValue = String(str);
+            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+                return `"${stringValue.replace(/"/g, '""')}"`;
+            }
+            return stringValue;
+        };
+
+        const csvContent = [
+            headers.join(','),
+            ...tempbudgets.map(item => [
+                escapeCSV(item.budget_name || item.name), // Try both property names
+                item.total_withdraw?.toFixed(2) || '0.00',
+                item.total_deposit?.toFixed(2) || '0.00',
+                escapeCSV(item.budget_description || item.description || ''), // Try both property names
+                item.budget_amount?.toFixed(2) || '0.00'
+            ].join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); // Added charset for Persian text
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `budget_export_${new Date().getTime()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    };
+    const exportBudgetToXLSX = () => {
+        // Prepare data for Excel
+        const excelData = [];
+
+        // Add headers
+        excelData.push([
+            'Budget Name',
+            'Sum of Withdraws',
+            'Sum of Deposits',
+            'Description',
+            'Budget Amount'
+        ]);
+
+        // Create a copy of budgets
+        var tempbudgets = JSON.parse(JSON.stringify(budgets));
+
+        // Calculate totals
+        for (let index = 0; index < tempbudgets.length; index++) {
+            const element = tempbudgets[index];
+            var SelectedBudgetTransactionList = _.filter(transactions, { "budget_id": element.id });
+            var DepositTransactions = _.filter(SelectedBudgetTransactionList, { "is_deposit": true });
+            var WithdrawTransactions = _.filter(SelectedBudgetTransactionList, { "is_deposit": false });
+
+            var DepositSum = 0;
+            var WithdrawSum = 0;
+
+            for (let index = 0; index < DepositTransactions.length; index++) {
+                const element = DepositTransactions[index];
+                DepositSum += element.transaction_amount;
+            }
+
+            for (let index = 0; index < WithdrawTransactions.length; index++) {
+                const element = WithdrawTransactions[index];
+                WithdrawSum += element.transaction_amount;
+            }
+
+            tempbudgets[index].total_withdraw = WithdrawSum;
+            tempbudgets[index].total_deposit = DepositSum;
+        }
+
+        // Add data rows
+        tempbudgets.forEach(item => {
+            excelData.push([
+                item.budget_name || item.name || '',  // Budget Name
+                item.total_withdraw?.toFixed(2) || '0.00',  // Withdraws
+                item.total_deposit?.toFixed(2) || '0.00',  // Deposits
+                item.budget_description || item.description || '',  // Description
+                item.budget_amount?.toFixed(2) || '0.00'  // Budget Amount
+            ]);
+        });
+
+        // Create worksheet
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+        // Set column widths (optional)
+        ws['!cols'] = [
+            { wch: 30 }, // Budget Name
+            { wch: 20 }, // Withdraws
+            { wch: 20 }, // Deposits
+            { wch: 40 }, // Description
+            { wch: 20 }  // Budget Amount
+        ];
+        XLSX.utils.book_append_sheet(wb, ws, 'Budget Report');
+        const fileName = `budget_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+    };
+    const exportTranscationToXLSX = () => {
+        // Prepare data for Excel
+        const excelData = [];
+
+        // Add headers
+        excelData.push([
+            'Budget Name',
+            'type',
+            'Transactions Amount'
+        ]);
+
+        // Create a copy of budgets
+        var tempTransactions = transactions;
+        tempTransactions.forEach(item => {
+            excelData.push([
+                _.find(budgets,{id:item.budget_id}).budget_name,  // Budget Name
+                item.is_deposit ==true ? "واریز" : "برداشت",  // type
+                item.transaction_amount?.toFixed(2) || '0.00'  // Budget Amount
+            ]);
+        });
+
+        // Create worksheet
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+        // Set column widths (optional)
+        ws['!cols'] = [
+            { wch: 20 }, // Budget Name
+            { wch: 20 }, // Withdraws
+            { wch: 30 }, // Deposits
+        ];
+        XLSX.utils.book_append_sheet(wb, ws, 'Transactions Report');
+        const fileName = `transactions_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+    };
     const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6', '#F97316'];
 
     return (
@@ -429,22 +595,22 @@ export default function BudgetManagement() {
                             </div>
                         </div>
                         <div className='mt-6 grid grid-cols-1 md:grid-cols-1 gap-4' dir='rtl'>
-                            <button className='p-4 bg-emerald-50 flex justify-around border-2 border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors duration-300 '>
+                            <button onClick={exportBudgetToXLSX} className='p-4 bg-emerald-50 flex justify-around border-2 border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors duration-300 '>
+                                <div className='flex justify-center items-center' >
+                                    <FaRegFileExcel className='w-7 h-7' color="green" />
+                                </div>
+                                <div className='text-center' >
+                                    <div className='text-emerald-600 font-medium'>دانلود لیست بودجه ها</div>
+                                    <div className='text-sm text-emerald-500 mt-1'>Excel (xlsx)</div>
+                                </div>
+                            </button>
+                            <button onClick={exportTranscationToXLSX} className='p-4 bg-emerald-50 flex justify-around border-2 border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors duration-300 '>
                                 <div className='flex justify-center items-center' >
                                     <FaRegFileExcel className='w-7 h-7' color="green" />
                                 </div>
                                 <div className='text-center' >
                                     <div className='text-emerald-600 font-medium'>دانلود لیست تراکنش ها</div>
                                     <div className='text-sm text-emerald-500 mt-1'>Excel (xlsx)</div>
-                                </div>
-                            </button>
-                            <button className='p-4 bg-emerald-50 flex justify-around border-2 border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors duration-300 '>
-                                <div className='flex justify-center items-center' >
-                                    <FaRegFilePdf className='w-7 h-7' color="green" />
-                                </div>
-                                <div className='text-center' >
-                                    <div className='text-emerald-600 font-medium'>دانلود گزارش مالی</div>
-                                    <div className='text-sm text-emerald-500 mt-1'>PDF کامل</div>
                                 </div>
                             </button>
                         </div>
@@ -658,7 +824,7 @@ export default function BudgetManagement() {
                                 </div>
 
                                 {/* Quick Chart */}
-                                
+
                             </div>
                         )}
 
