@@ -9,6 +9,8 @@ module.exports = {
     'border-yellow-500',
     'border-orange-600',
     'bg-red-600',
+    'bg-red-700',
+    'bg-emerald-600',
     'bg-indigo-600', 
     'bg-amber-600',
     'bg-sky-600',

@@ -9,7 +9,8 @@ import {
     LineChart, Line, AreaChart, Area,
     ResponsiveContainer
 } from 'recharts'
-import { FaFilePdf, FaRegFileExcel, FaRegFilePdf } from 'react-icons/fa'
+import { FaCashRegister, FaFilePdf, FaRegFileExcel, FaRegFilePdf } from 'react-icons/fa'
+import _ from 'lodash'
 
 export default function BudgetManagement() {
     const [mailSent, setMailSent] = useState(false)
@@ -56,7 +57,7 @@ export default function BudgetManagement() {
     ]
 
     const [newTransaction, setNewTransaction] = useState({
-        isDeposit: true,
+        is_deposit: true,
         transaction_amount: 0,
         date: new Date().toISOString().split('T')[0],
         budget_id: 0
@@ -90,7 +91,24 @@ export default function BudgetManagement() {
 
     // Handle budget click
     const handleBudgetClick = (budget) => {
-        setSelectedBudget(budget)
+        let tempBudget = budget
+        var SelectedBudgetTransactionList = _.filter(transactions, { "budget_id": budget.id })
+        var DepositTransactions = _.filter(SelectedBudgetTransactionList, { "is_deposit": true })
+        var WithdrawTransactions = _.filter(SelectedBudgetTransactionList, { "is_deposit": false })
+        var DepositSum = 0
+        var WithdrawSum = 0
+        for (let index = 0; index < DepositTransactions.length; index++) {
+            const element = DepositTransactions[index];
+            DepositSum += element.transaction_amount
+        } for (let index = 0; index < WithdrawTransactions.length; index++) {
+            const element = WithdrawTransactions[index];
+            WithdrawSum += element.transaction_amount
+        }
+        tempBudget.total_withdraw = WithdrawSum
+        tempBudget.total_deposit = DepositSum
+        tempBudget.transactions = SelectedBudgetTransactionList
+        setSelectedBudget(tempBudget)
+
         setActiveTab("budgetDetail")
     }
 
@@ -117,23 +135,25 @@ export default function BudgetManagement() {
 
     // Handle add transaction   
     const handleAddTransaction = () => {
-        if (!newTransaction.transaction_amount || !newTransaction.budget_id || !newTransaction.isDeposit) {
+        if (!newTransaction.transaction_amount || !newTransaction.budget_id || newTransaction.is_deposit == null) {
             Swal.fire({
                 icon: "error",
                 title: "خطا",
                 text: "لطفا تمامی فیلد ها را پر کنید"
             })
+            console.log(newTransaction)
             return
         }
 
         const newTrans = {
             ...newTransaction,
             transaction_amount: parseInt(newTransaction.transaction_amount)
-        }
 
+        }
+        console.log(newTrans)
         setIsAddingTransaction(false)
         setNewTransaction({
-            isDeposit: true,
+            is_deposit: true,
             transaction_amount: 0,
             date: new Date().toISOString().split('T')[0],
             budget_id: 0
@@ -149,11 +169,13 @@ export default function BudgetManagement() {
                     showConfirmButton: false
                 })
                 setTransactions([newTrans, ...transactions])
-
+                GetTransactions()
+                GetBudgets()
             })
+
+
     }
 
-    // Handle budget creation
     const handleCreateBudget = () => {
         if (!newBudget.budget_name || !newBudget.budget_amount || !newBudget.budget_description || !newBudget.color_code) {
             Swal.fire({
@@ -207,13 +229,30 @@ export default function BudgetManagement() {
                     timer: 2000,
                     showConfirmButton: false
                 })
+                var deleted_tranaction = _.find(transactions, { "id": id })
+                for (let index = 0; index < budgets.length; index++) {
+                    const element = budgets[index];
+                    if (element.id == id) {
+                        if (deleted_tranaction.is_deposit == true) {
+                            budgets[index].budget_amount -= newTrans.transaction_amount
+                        }
+                        else {
+                            budgets[index].budget_amount += newTrans.transaction_amount
+                        }
+                    }
+
+                }
                 for (let index = 0; index < transactions.length; index++) {
                     const element = transactions[index];
                     if (element.id == id) {
                         setTransactions(transactions.filter(e => e.id !== id))
+                        location.pathname = "/budget"
                         return
                     }
                 }
+
+
+
             })
             .catch(err => {
                 alert("error")
@@ -307,12 +346,8 @@ export default function BudgetManagement() {
                 <div className='bg-white rounded-2xl shadow-xl p-6 mb-6'>
                     <div className='flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6'>
                         <div className='flex items-center gap-4'>
-                            <div className='bg-emerald-100 p-3 rounded-2xl'>
-                                <img
-                                    src={Logo}
-                                    alt="MadreseMan Logo"
-                                    className='w-16 h-16'
-                                />
+                            <div className='bg-blue-100 py-4 rounded-2xl'>
+                                <FaCashRegister className='w-[4vw] h-[4vh]' />
                             </div>
                             <div>
                                 <h1 className='text-2xl lg:text-3xl font-bold text-gray-800'>
@@ -433,8 +468,9 @@ export default function BudgetManagement() {
                                     تراکنش‌ها
                                 </button>
                                 <button
+                                    disabled
                                     onClick={() => { setActiveTab("reports"); setSelectedBudget(null); }}
-                                    className={`flex-1 min-w-[120px] py-4 text-center font-medium transition-colors duration-300 ${activeTab === "reports" ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-gray-600 hover:text-gray-800'}`}
+                                    className={`flex-1 min-w-[120px] py-4 disabled:bg-gray-200 rounded-2xl text-center font-medium transition-colors duration-300 ${activeTab === "reports" ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-gray-600 hover:text-gray-800'}`}
                                 >
                                     گزارشات
                                 </button>
@@ -549,6 +585,30 @@ export default function BudgetManagement() {
                                         {budgets.map((budget) => {
                                             const remaining = budget.allocated - budget.spent
                                             var border_color_string = `border-${budget.color_code}`
+                                            let tempBudget = budget
+                                            var SelectedBudgetTransactionList = _.filter(transactions, { "budget_id": budget.id })
+                                            var DepositTransactions = _.filter(SelectedBudgetTransactionList, { "is_deposit": true })
+                                            var WithdrawTransactions = _.filter(SelectedBudgetTransactionList, { "is_deposit": false })
+                                            var DepositSum = 0
+                                            var WithdrawSum = 0
+                                            for (let index = 0; index < DepositTransactions.length; index++) {
+                                                const element = DepositTransactions[index];
+                                                DepositSum += element.transaction_amount
+                                            } for (let index = 0; index < WithdrawTransactions.length; index++) {
+                                                const element = WithdrawTransactions[index];
+                                                WithdrawSum += element.transaction_amount
+                                            }
+                                            tempBudget.total_withdraw = WithdrawSum
+                                            tempBudget.total_deposit = DepositSum
+                                            var TotalTransactionOutput = DepositSum - WithdrawSum
+                                            if (TotalTransactionOutput > 0) {
+                                                var FirstAllocatedBudget = budget.budget_amount - TotalTransactionOutput
+                                            }
+                                            else {
+                                                var FirstAllocatedBudget = budget.budget_amount + TotalTransactionOutput
+                                            }
+                                            var usedPercentage = ((-TotalTransactionOutput) * 100 / FirstAllocatedBudget).toFixed(1)
+                                            var usedPercentageForStyling = usedPercentage < 0 ? -usedPercentage : usedPercentage
                                             return (
                                                 <div
                                                     key={budget.id}
@@ -564,29 +624,29 @@ export default function BudgetManagement() {
                                                     <div className='space-y-2'>
                                                         <div className='flex justify-between text-sm'>
                                                             <span className='text-gray-600'>واریز شده :</span>
-                                                            <span className='font-medium'>{formatCurrency(budget.allocated)}</span>
+                                                            <span className='font-medium'>{formatCurrency(tempBudget.total_deposit)}</span>
                                                         </div>
                                                         <div className='flex justify-between text-sm'>
                                                             <span className='text-gray-600'>برداشت شده:</span>
-                                                            <span className='font-medium'>{formatCurrency(budget.spent)}</span>
+                                                            <span className='font-medium'>{formatCurrency(tempBudget.total_withdraw)}</span>
                                                         </div>
                                                         <div className='flex justify-between text-sm'>
                                                             <span className='text-gray-600'>مانده:</span>
-                                                            <span className='font-medium text-emerald-600'>{formatCurrency(remaining)}</span>
+                                                            <span className='font-medium text-emerald-600'>{formatCurrency(budget.budget_amount)}</span>
                                                         </div>
                                                     </div>
 
                                                     <div className='mt-3'>
                                                         <div className='flex justify-between text-xs text-gray-500 mb-1'>
                                                             <span>میزان مصرف</span>
-                                                            <span>{budget.allocated > 0 ? ((budget.spent / budget.allocated) * 100).toFixed(1) : 0}%</span>
+                                                            <span dir='ltr'>{usedPercentage}%</span>
                                                         </div>
-                                                        <div className='w-full bg-gray-200 rounded-full h-1.5'>
+                                                        <div className='w-full bg-gray-200 rounded-full h-1.5' dir='ltr'>
                                                             <div
                                                                 className={`h-1.5 rounded-full`}
                                                                 style={{
-                                                                    width: `${budget.allocated > 0 ? Math.min((budget.spent / budget.allocated) * 100, 100) : 0}%`,
-                                                                    backgroundColor: budget.color
+                                                                    width: `${usedPercentageForStyling}%`,
+                                                                    backgroundColor: `${usedPercentage > 0 ? "red" : "green"}`
                                                                 }}
                                                             ></div>
                                                         </div>
@@ -598,26 +658,7 @@ export default function BudgetManagement() {
                                 </div>
 
                                 {/* Quick Chart */}
-                                <div className='bg-white rounded-2xl shadow-xl p-6'>
-                                    <h3 className='text-xl font-bold text-gray-800 mb-6'>نمای کلی بودجه‌ها</h3>
-                                    <div className='h-64'>
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={budgetChartData}>
-                                                <CartesianGrid strokeDasharray="3 3" />
-                                                <XAxis dataKey="name" />
-                                                <YAxis label={{ value: 'میلیون تومان', angle: -90, position: 'insideLeft' }} />
-                                                <Tooltip
-                                                    formatter={(value) => [`${value} میلیون تومان`, '']}
-                                                    labelFormatter={(label) => `بودجه: ${label}`}
-                                                />
-                                                <Legend />
-                                                <Bar dataKey="allocated" name="بودجه تخصیص یافته" fill="#10B981" />
-                                                <Bar dataKey="spent" name="مصرف شده" fill="#3B82F6" />
-                                                <Bar dataKey="remaining" name="مانده" fill="#8B5CF6" />
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
+                                
                             </div>
                         )}
 
@@ -649,14 +690,14 @@ export default function BudgetManagement() {
                                     </div>
                                     <div className='bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-6 border border-blue-200'>
                                         <div className='text-center'>
-                                            <div className='text-3xl font-bold text-blue-700'>{formatCurrency(selectedBudget.spent)}</div>
-                                            <div className='text-gray-600 mt-2'>هزینه شده</div>
+                                            <div className='text-3xl font-bold text-blue-700'>{formatCurrency(selectedBudget.total_withdraw)}</div>
+                                            <div className='text-gray-600 mt-2'>برداشت شده</div>
                                         </div>
                                     </div>
                                     <div className='bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200'>
                                         <div className='text-center'>
-                                            <div className='text-3xl font-bold text-green-700'>{formatCurrency(selectedBudget.allocated - selectedBudget.spent)}</div>
-                                            <div className='text-gray-600 mt-2'>مانده بودجه</div>
+                                            <div className='text-3xl font-bold text-green-700'>{formatCurrency(selectedBudget.total_deposit)}</div>
+                                            <div className='text-gray-600 mt-2'>واریز شده</div>
                                         </div>
                                     </div>
                                 </div>
@@ -667,30 +708,31 @@ export default function BudgetManagement() {
                                         <thead className='bg-gray-50'>
                                             <tr>
                                                 <th className='p-4 text-right font-semibold text-gray-700'>تاریخ</th>
-                                                <th className='p-4 text-right font-semibold text-gray-700'>توضیحات</th>
                                                 <th className='p-4 text-right font-semibold text-gray-700'>مبلغ</th>
-                                                <th className='p-4 text-right font-semibold text-gray-700'>وضعیت</th>
+                                                <th className='p-4 text-right font-semibold text-gray-700'>عملیات</th>
                                             </tr>
                                         </thead>
                                         <tbody className='divide-y divide-gray-200'>
-                                            {transactions.map((transaction) => (
+                                            {selectedBudget.transactions.map((transaction) => (
                                                 <tr key={transaction.id} className='hover:bg-gray-50 transition-colors duration-200'>
                                                     <td className='p-4 text-gray-600 font-medium'>
-                                                        {transaction.date}
+                                                        {new Date(transaction.date).toLocaleDateString("fa-ir")}
                                                     </td>
-                                                    <td className='p-4 text-gray-800'>
-                                                        {transaction.description}
-                                                    </td>
+
                                                     <td className='p-4'>
-                                                        <div className={`text-lg font-bold ${transaction.type === 'income' ? 'text-green-600' : transaction.type === 'expense' ? 'text-red-600' : 'text-blue-600'}`}>
-                                                            {transaction.type === 'income' ? '+' : transaction.type === 'expense' ? '-' : ''}
-                                                            {formatCurrency(transaction.amount)}
+                                                        <div className={`text-lg font-bold ${transaction.is_deposit == true ? 'text-green-600' : transaction.is_deposit == false ? 'text-red-600' : 'text-blue-600'}`}>
+                                                            {transaction.is_deposit == true ? '+' : transaction.is_deposit == false ? '-' : ''}
+                                                            {formatCurrency(transaction.transaction_amount)}
                                                         </div>
                                                     </td>
                                                     <td className='p-4'>
-                                                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${transaction.approved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                                            {transaction.approved ? 'تایید شده' : 'در انتظار تایید'}
-                                                        </span>
+                                                        <div className='flex gap-2'>
+                                                            <button onClick={() => { deleteTransaction(transaction.id) }} className='p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-300' title='حذف'>
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                </svg>
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -702,94 +744,6 @@ export default function BudgetManagement() {
 
                         {activeTab === "transactions" && (
                             <div className='space-y-6'>
-                                {/* Transfer Modal */}
-                                {isTransferring && (
-                                    <div className='bg-white rounded-2xl shadow-xl p-6'>
-                                        <div className='flex justify-between items-center mb-6'>
-                                            <h3 className='text-xl font-bold text-gray-800'>انتقال بودجه</h3>
-                                            <button
-                                                onClick={() => setIsTransferring(false)}
-                                                className='text-gray-500 hover:text-gray-700'
-                                            >
-                                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                                                </svg>
-                                            </button>
-                                        </div>
-
-                                        <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
-                                            <div>
-                                                <label className='block mb-2 text-sm font-medium text-gray-700'>از بودجه</label>
-                                                <select
-                                                    value={transferData.fromBudget}
-                                                    onChange={(e) => setTransferData({ ...transferData, fromBudget: e.target.value })}
-                                                    className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none'
-                                                >
-                                                    <option value="">انتخاب بودجه مبدا</option>
-                                                    {budgets.map(budget => (
-                                                        <option key={budget.id} value={budget.id}>{budget.budget_name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            <div>
-                                                <label className='block mb-2 text-sm font-medium text-gray-700'>به بودجه</label>
-                                                <select
-                                                    value={transferData.toBudget}
-                                                    onChange={(e) => setTransferData({ ...transferData, toBudget: e.target.value })}
-                                                    className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none'
-                                                >
-                                                    <option value="">انتخاب بودجه مقصد</option>
-                                                    {budgets
-                                                        .filter(b => b.id !== transferData.fromBudget)
-                                                        .map(budget => (
-                                                            <option key={budget.id} value={budget.id}>{budget.budget_name}</option>
-                                                        ))}
-                                                </select>
-                                            </div>
-
-                                            <div>
-                                                <label className='block mb-2 text-sm font-medium text-gray-700'>مبلغ انتقال (تومان)</label>
-                                                <input
-                                                    type="number"
-                                                    value={transferData.amount}
-                                                    onChange={(e) => setTransferData({ ...transferData, amount: e.target.value })}
-                                                    className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none'
-                                                    placeholder="مبلغ را وارد کنید"
-                                                    dir='rtl'
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <label className='block mb-2 text-sm font-medium text-gray-700'>توضیحات</label>
-                                                <input
-                                                    type="text"
-                                                    value={transferData.description}
-                                                    onChange={(e) => setTransferData({ ...transferData, description: e.target.value })}
-                                                    className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none'
-                                                    placeholder="توضیحات انتقال"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className='flex gap-3 mt-6'>
-                                            <button
-                                                onClick={handleTransfer}
-                                                className='flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors duration-300'
-                                            >
-                                                انتقال بودجه
-                                            </button>
-                                            <button
-                                                onClick={() => setIsTransferring(false)}
-                                                className='flex-1 py-3 border-2 border-gray-300 hover:border-gray-400 text-gray-700 rounded-lg font-medium transition-colors duration-300'
-                                            >
-                                                انصراف
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Add Transaction Form */}
                                 {isAddingTransaction && (
                                     <div className='bg-white rounded-2xl shadow-xl p-6'>
                                         <div className='flex justify-between items-center mb-6'>
@@ -813,9 +767,9 @@ export default function BudgetManagement() {
                                                             key={type.id}
                                                             type='button'
                                                             onClick={() => {
-                                                                setNewTransaction({ ...newTransaction, isDeposit: type.id });
+                                                                setNewTransaction({ ...newTransaction, is_deposit: type.id });
                                                             }}
-                                                            className={`flex-1 p-3 rounded-lg border-2 transition-all duration-300 ${newTransaction.isDeposit === type.id ? type.color.replace('text-', 'border-').replace('bg-', 'border-') + ' ' + type.color : 'border-gray-300 hover:border-gray-400'}`}
+                                                            className={`flex-1 p-3 rounded-lg border-2 transition-all duration-300 ${newTransaction.is_deposit === type.id ? type.color.replace('text-', 'border-').replace('bg-', 'border-') + ' ' + type.color : 'border-gray-300 hover:border-gray-400'}`}
                                                         >
                                                             <div className={`text-center ${newTransaction.type === type.id ? type.color.split(' ')[0] : 'text-gray-600'}`}>
                                                                 {type.name}
@@ -945,8 +899,8 @@ export default function BudgetManagement() {
                                                                 {new Date(transaction.date).toLocaleDateString("Fa-IR").toString()}
                                                             </td>
                                                             <td className='p-4'>
-                                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${transaction.isDeposit ? 'bg-green-100 text-green-800' : !transaction.isDeposit ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
-                                                                    {transaction.isDeposit ? "واریز" : "برداشت"}
+                                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${transaction.is_deposit ? 'bg-green-100 text-green-800' : !transaction.is_deposit ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                                    {transaction.is_deposit ? "واریز" : "برداشت"}
                                                                 </span>
                                                             </td>
                                                             <td className='p-4'>

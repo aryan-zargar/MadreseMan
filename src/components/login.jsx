@@ -37,7 +37,7 @@ export default function Login() {
     }
 
     return (
-        <div className='login_bg h-screen flex justify-center items-center ' >
+        <div className='login_bg h-screen flex justify-center items-center ' dir='ltr' >
             <div className='grid grid-cols-5 lg:w-[70vw] lg:h-100 w-screen h-screen ' >
                 <div className='col-span-3 items-center ' >
                     <div className='justify-center items-center border-l-4 border-t-4 border-b-4 border-blue-900 px-14 py-18 rounded-l-xl bg-gray-50 '>
