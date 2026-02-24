@@ -260,69 +260,7 @@ export default function ScoreEntrySystem() {
                 {/* Main Content Grid */}
                 <div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
                     {/* Left Column - Authentication & Filters (1/4 width) */}
-                    <div className='lg:col-span-1 space-y-6'>
-                        {/* Authentication Card */}
-                        <div className='bg-white rounded-2xl shadow-xl p-6'>
-                            <div className='text-center mb-6'>
-                                <div className='inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4'>
-                                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                                    </svg>
-                                </div>
-                                <h3 className='text-xl font-bold text-gray-800'>تایید هویت</h3>
-                                <p className='text-gray-600 text-sm mt-2'>برای دسترسی به سیستم ثبت نمرات</p>
-                            </div>
-
-                            <div className='mb-6'>
-                                <label className='block mb-2 text-sm font-medium text-gray-700'>ایمیل شما</label>
-                                <div className='bg-gray-50 rounded-lg p-3 text-center'>
-                                    <p className='text-blue-700 font-medium truncate' dir='ltr'>
-                                        {usermail}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className='mb-6' dir='rtl'>
-                                <label className='block mb-2 text-sm font-medium text-gray-700'>کد تایید</label>
-                                <input
-                                    type="text"
-                                    value={code}
-                                    onChange={(e) => setCode(e.target.value)}
-                                    className='w-full p-3 text-center border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300 outline-none'
-                                    placeholder="••••••"
-                                    maxLength="6"
-                                    dir='ltr'
-                                    disabled={loading}
-                                />
-                            </div>
-
-                            <button
-                                onClick={Submit}
-                                disabled={loading}
-                                className={`w-full py-3 rounded-lg font-semibold transition-all duration-300 ${loading ? 'bg-blue-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'} text-white flex items-center justify-center`}
-                            >
-                                {loading ? (
-                                    <>
-                                        <svg className="animate-spin h-5 w-5 ml-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                                        </svg>
-                                        در حال بررسی...
-                                    </>
-                                ) : 'ورود به سیستم'}
-                            </button>
-
-                            <div className='mt-4 text-center'>
-                                <button
-                                    onClick={handleResendCode}
-                                    disabled={loading}
-                                    className='text-blue-600 hover:text-blue-800 font-medium transition-colors duration-300 disabled:text-gray-400 text-sm'
-                                >
-                                    ارسال مجدد کد
-                                </button>
-                            </div>
-                        </div>
-
+                    <div className='lg:col-span-1 space-y-6'>                        
                         {/* Filters Card */}
                         <div className='bg-white rounded-2xl shadow-xl p-6'>
                             <h3 className='text-lg font-bold text-gray-800 mb-4'>فیلترها و تنظیمات</h3>
