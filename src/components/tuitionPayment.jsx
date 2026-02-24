@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Swal from 'sweetalert2';
+import axios from 'axios';
 import Logo from '../assets/MadreseManLogo.png';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
@@ -7,54 +8,73 @@ import {
 } from 'recharts';
 import { 
     FaReceipt, FaMoneyBillWave, FaCalendarAlt, FaUserGraduate, 
-    FaFilter, FaSearch, FaDownload, FaPrint, FaHistory 
+    FaSearch, FaDownload, FaPrint, FaHistory, FaUpload,
+    FaCheck, FaAdjust, FaTimes, FaTrash, FaFilePdf, FaFilter
 } from 'react-icons/fa';
 
+const API_BASE_URL = 'http://localhost:5217/api/v1';
+const axiosInstance = axios.create({
+    baseURL: API_BASE_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    }
+});
+
+axiosInstance.interceptors.request.use((config) => {
+    const session = localStorage.getItem('token');
+    if (session) {
+        config.params = { ...config.params, session };
+    }
+    return config;
+});
+
 export default function TuitionManagement() {
-    // State Management
     const [activeTab, setActiveTab] = useState("payments");
     const [payments, setPayments] = useState([]);
     const [filteredPayments, setFilteredPayments] = useState([]);
     const [students, setStudents] = useState([]);
+    const [grades, setGrades] = useState([]);
+    const [classes, setClasses] = useState([]);
+    const [academicYears, setAcademicYears] = useState([]);
+    const [selectedAcademicYear, setSelectedAcademicYear] = useState(null);
+    const [selectedChartAcademicYear, setSelectedChartAcademicYear] = useState(null);
     const [searchTerm, setSearchTerm] = useState("");
+    const [studentSearch, setStudentSearch] = useState("");
+    const [showStudentDropdown, setShowStudentDropdown] = useState(false);
     const [selectedGrade, setSelectedGrade] = useState("all");
     const [selectedStatus, setSelectedStatus] = useState("all");
     const [selectedMonth, setSelectedMonth] = useState("all");
     const [isAddingPayment, setIsAddingPayment] = useState(false);
-    const [isViewingReceipt, setIsViewingReceipt] = useState(false);
     const [selectedPayment, setSelectedPayment] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const studentDropdownRef = useRef(null);
+    const [gradeFees, setGradeFees] = useState({});
     const [stats, setStats] = useState({
         totalPaid: 0,
         totalPending: 0,
         totalStudents: 0,
         monthlyStats: {},
         byGrade: {},
-        byStatus: { paid: 0, pending: 0, overdue: 0 }
+        byStatus: { C: 0, H: 0, N: 0 }
     });
 
-    // Payment Form State
     const [paymentForm, setPaymentForm] = useState({
         student_id: "",
+        student_display: "",
         amount: "",
-        payment_date: new Date().toISOString().split('T')[0],
         month: new Date().getMonth() + 1,
-        year: new Date().getFullYear(),
-        payment_method: "cash",
-        description: ""
+        discount: 0,
+        fine: 0,
+        net_amount: 0,
+        status: "N",
+        due: new Date().toISOString().split('T')[0],
+        date: new Date().toISOString().split('T')[0],
+        receipt_number: "",
+        description: "",
+        attachment_id: 0,
+        academic_year_id: null
     });
-
-    // Grade and Class Mappings
-    const gradeMap = {
-        1: { name: "پایه هفتم", fee: 1500000 },
-        2: { name: "پایه هشتم", fee: 1600000 },
-        3: { name: "پایه نهم", fee: 1700000 }
-    };
-
-    const classMap = {
-        1: "کلاس ۷۰۱", 2: "کلاس ۷۰۲", 3: "کلاس ۷۰۳",
-        4: "کلاس ۸۰۱", 5: "کلاس ۸۰۲", 6: "کلاس ۸۰۳",
-        7: "کلاس ۹۰۱", 8: "کلاس ۹۰۲", 9: "کلاس ۹۰۳"
-    };
 
     const monthMap = {
         1: "فروردین", 2: "اردیبهشت", 3: "خرداد",
@@ -64,306 +84,124 @@ export default function TuitionManagement() {
     };
 
     const statusMap = {
-        paid: { label: "پرداخت شده", color: "bg-green-100 text-green-800" },
-        pending: { label: "در انتظار", color: "bg-yellow-100 text-yellow-800" },
-        overdue: { label: "معوقه", color: "bg-red-100 text-red-800" }
+        'C': { label: "پرداخت کامل", color: "bg-green-100 text-green-800", icon: FaCheck },
+        'H': { label: "پرداخت نیمه", color: "bg-yellow-100 text-yellow-800", icon: FaAdjust },
+        'N': { label: "پرداخت نشده", color: "bg-red-100 text-red-800", icon: FaTimes }
     };
 
-    // Generate Mock Students
-    const generateMockStudents = () => {
-        const mockStudents = [];
-        const firstNames = ["علی", "محمد", "حسین", "رضا", "سارا", "فاطمه", "زهرا", "امیر", "مهدی", "پارسا"];
-        const lastNames = ["محمدی", "کریمی", "احمدی", "حسینی", "رضایی", "جعفری", "موسوی", "قریشی", "نوری", "اکبری"];
-        
-        let id = 1;
-        for (let grade = 1; grade <= 3; grade++) {
-            for (let classNum = 1; classNum <= 3; classNum++) {
-                for (let i = 0; i < 5; i++) {
-                    mockStudents.push({
-                        id: id++,
-                        name: firstNames[Math.floor(Math.random() * firstNames.length)],
-                        lastname: lastNames[Math.floor(Math.random() * lastNames.length)],
-                        national_id: `00${Math.floor(10000000 + Math.random() * 90000000)}`,
-                        grade_id: grade,
-                        class_id: (grade - 1) * 3 + classNum,
-                        birth_date: `138${Math.floor(Math.random() * 10)}-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}`
-                    });
-                }
-            }
-        }
-        return mockStudents;
+    const gradeFeeMap = {
+        "پایه هفتم": 1500000,
+        "پایه هشتم": 1600000,
+        "پایه نهم": 1700000
     };
 
-    // Generate Mock Payments
-    const generateMockPayments = (studentsList) => {
-        const mockPayments = [];
-        const currentYear = 1403;
-        
-        studentsList.forEach(student => {
-            const studentGrade = student.grade_id;
-            const baseAmount = gradeMap[studentGrade].fee;
-            
-            // Generate payments for last 6 months
-            for (let month = 1; month <= 6; month++) {
-                const statuses = ['paid', 'pending', 'overdue'];
-                const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-                
-                mockPayments.push({
-                    id: `${student.id}-${month}`,
-                    student_id: student.id,
-                    amount: baseAmount + Math.floor(Math.random() * 100000),
-                    payment_date: randomStatus === 'paid' 
-                        ? `${currentYear}-${String(month).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}`
-                        : null,
-                    month: month,
-                    year: currentYear,
-                    payment_method: ['cash', 'bank', 'online'][Math.floor(Math.random() * 3)],
-                    status: randomStatus,
-                    description: randomStatus === 'paid' ? 'پرداخت موفق' : 'در انتظار پرداخت'
-                });
-            }
-        });
-        
-        return mockPayments;
-    };
-
-    // Format Date
-    const formatDate = (dateString) => {
-        if (!dateString) return "نامشخص";
-        try {
-            const date = new Date(dateString);
-            return new Intl.DateTimeFormat('fa-IR').format(date);
-        } catch {
-            return dateString;
-        }
-    };
-
-    // Format Amount
-    const formatAmount = (amount) => {
-        return new Intl.NumberFormat('fa-IR').format(amount) + " تومان";
-    };
-
-    // Initialize Mock Data
     useEffect(() => {
-        const mockStudents = generateMockStudents();
-        const mockPayments = generateMockPayments(mockStudents);
-        
-        // Enrich payments with student info
-        const enrichedPayments = mockPayments.map(payment => {
-            const student = mockStudents.find(s => s.id === payment.student_id);
+        fetchInitialData();
+    }, []);
+
+    useEffect(() => {
+        function handleClickOutside(event) {
+            if (studentDropdownRef.current && !studentDropdownRef.current.contains(event.target)) {
+                setShowStudentDropdown(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (selectedAcademicYear) {
+            filterPaymentsByAcademicYear();
+        }
+    }, [selectedAcademicYear, payments, searchTerm, selectedGrade, selectedStatus, selectedMonth]);
+
+    useEffect(() => {
+        if (selectedChartAcademicYear) {
+            fetchAndCalculateChartData();
+        }
+    }, [selectedChartAcademicYear]);
+
+    const fetchInitialData = async () => {
+        setLoading(true);
+        try {
+            const [studentsRes, gradesRes, classesRes, academicYearsRes, paymentsRes] = await Promise.all([
+                axiosInstance.get('/Student/GetAll'),
+                axiosInstance.get('/Grade/GetAll'),
+                axiosInstance.get('/Class/GetAll'),
+                axiosInstance.get('/AcademicYear/GetAll'),
+                axiosInstance.get('/TuitionPayment/GetAll')
+            ]);
+
+            setStudents(studentsRes.data);
+            setGrades(gradesRes.data);
+            setClasses(classesRes.data);
+            setAcademicYears(academicYearsRes.data);
+            
+            const activeYear = academicYearsRes.data.find(y => y.active === true);
+            setSelectedAcademicYear(activeYear);
+            setSelectedChartAcademicYear(activeYear);
+            
+            const gradeFeeData = {};
+            gradesRes.data.forEach(grade => {
+                gradeFeeData[grade.grade_name] = gradeFeeMap[grade.grade_name] || 1500000;
+            });
+            setGradeFees(gradeFeeData);
+            
+            const enrichedPayments = enrichPaymentsData(paymentsRes.data, studentsRes.data, gradesRes.data, classesRes.data);
+            setPayments(enrichedPayments);
+            
+            filterPaymentsByAcademicYear(enrichedPayments, activeYear);
+            
+        } catch (error) {
+            console.error('Error fetching data:', error);
+            Swal.fire({
+                icon: "error",
+                title: "خطا",
+                text: "خطا در دریافت اطلاعات از سرور"
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const enrichPaymentsData = (paymentsData, studentsData, gradesData, classesData) => {
+        return paymentsData.map(payment => {
+            const student = studentsData.find(s => s.id === payment.student_id);
+            const studentGrade = student ? gradesData.find(g => g.id === student.grade_id) : null;
+            const studentClass = student ? classesData.find(c => c.id === student.class_id) : null;
+            
             return {
                 ...payment,
                 student_name: student ? `${student.name} ${student.lastname}` : "نامشخص",
-                student_grade: student ? gradeMap[student.grade_id]?.name : "نامشخص",
-                student_class: student ? classMap[student.class_id] : "نامشخص",
-                formatted_date: payment.payment_date ? formatDate(payment.payment_date) : "پرداخت نشده",
-                month_name: monthMap[payment.month],
-                status_info: statusMap[payment.status] || statusMap.pending,
-                formatted_amount: formatAmount(payment.amount)
+                student_grade: studentGrade?.grade_name || "نامشخص",
+                student_class: studentClass?.class_name || "نامشخص",
+                formatted_date: payment.date ? formatDate(payment.date) : "نامشخص",
+                month_name: monthMap[payment.month] || payment.month,
+                status_info: statusMap[payment.status] || statusMap.N,
+                formatted_amount: formatAmount(payment.net_amount),
+                formatted_due: payment.due ? formatDate(payment.due) : "نامشخص"
             };
         });
-        
-        setStudents(mockStudents);
-        setPayments(enrichedPayments);
-        setFilteredPayments(enrichedPayments);
-        calculateStats(enrichedPayments, mockStudents);
-    }, []);
-
-    // Calculate Statistics
-    const calculateStats = (paymentsData, studentsData) => {
-        const totalPaid = paymentsData
-            .filter(p => p.status === 'paid')
-            .reduce((sum, p) => sum + p.amount, 0);
-        
-        const totalPending = paymentsData
-            .filter(p => p.status === 'pending')
-            .reduce((sum, p) => sum + p.amount, 0);
-        
-        const monthlyStats = {};
-        const byGrade = {};
-        const byStatus = { paid: 0, pending: 0, overdue: 0 };
-        
-        paymentsData.forEach(payment => {
-            // Monthly stats
-            const monthKey = `${payment.year}-${payment.month}`;
-            if (!monthlyStats[monthKey]) {
-                monthlyStats[monthKey] = { paid: 0, pending: 0, overdue: 0 };
-            }
-            monthlyStats[monthKey][payment.status] += payment.amount;
-            
-            // Grade stats
-            const gradeName = payment.student_grade;
-            byGrade[gradeName] = (byGrade[gradeName] || 0) + 1;
-            
-            // Status count
-            byStatus[payment.status] = (byStatus[payment.status] || 0) + 1;
-        });
-        
-        setStats({
-            totalPaid,
-            totalPending,
-            totalStudents: studentsData.length,
-            monthlyStats,
-            byGrade,
-            byStatus
-        });
     };
 
-    // Handle Form Changes
-    const handleFormChange = (e) => {
-        const { name, value } = e.target;
-        setPaymentForm(prev => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
-    // Handle Payment Submission
-    const handleSubmitPayment = (e) => {
-        e.preventDefault();
+    const filterPaymentsByAcademicYear = (paymentsList = payments, academicYear = selectedAcademicYear) => {
+        if (!academicYear) return;
         
-        if (!paymentForm.student_id || !paymentForm.amount) {
-            Swal.fire({
-                icon: "error",
-                title: "خطا",
-                text: "لطفا فیلدهای ضروری را پر کنید"
-            });
-            return;
-        }
-        
-        // Find selected student
-        const selectedStudent = students.find(s => s.id === parseInt(paymentForm.student_id));
-        if (!selectedStudent) {
-            Swal.fire({
-                icon: "error",
-                title: "خطا",
-                text: "دانش‌آموز انتخاب شده یافت نشد"
-            });
-            return;
-        }
-        
-        // Create new payment
-        const newPayment = {
-            id: `${Date.now()}-${Math.random()}`,
-            student_id: parseInt(paymentForm.student_id),
-            amount: parseInt(paymentForm.amount),
-            payment_date: paymentForm.payment_date,
-            month: parseInt(paymentForm.month),
-            year: parseInt(paymentForm.year),
-            payment_method: paymentForm.payment_method,
-            status: "paid",
-            description: paymentForm.description,
-            student_name: `${selectedStudent.name} ${selectedStudent.lastname}`,
-            student_grade: gradeMap[selectedStudent.grade_id]?.name,
-            student_class: classMap[selectedStudent.class_id],
-            formatted_date: formatDate(paymentForm.payment_date),
-            month_name: monthMap[paymentForm.month],
-            status_info: statusMap.paid,
-            formatted_amount: formatAmount(parseInt(paymentForm.amount))
-        };
-        
-        // Add to payments list
-        const updatedPayments = [newPayment, ...payments];
-        setPayments(updatedPayments);
-        setFilteredPayments(updatedPayments);
-        
-        // Recalculate stats
-        calculateStats(updatedPayments, students);
-        
-        Swal.fire({
-            icon: "success",
-            title: "موفقیت",
-            text: "پرداخت با موفقیت ثبت شد",
-            timer: 2000
-        });
-        
-        resetForm();
-    };
-
-    // Handle Payment Status Update
-    const handleUpdateStatus = (paymentId, newStatus) => {
-        const updatedPayments = payments.map(payment => {
-            if (payment.id === paymentId) {
-                return {
-                    ...payment,
-                    status: newStatus,
-                    status_info: statusMap[newStatus]
-                };
-            }
-            return payment;
-        });
-        
-        setPayments(updatedPayments);
-        setFilteredPayments(updatedPayments);
-        calculateStats(updatedPayments, students);
-        
-        Swal.fire({
-            icon: "success",
-            title: "موفقیت",
-            text: "وضعیت پرداخت بروزرسانی شد"
-        });
-    };
-
-    // View Receipt
-    const handleViewReceipt = (payment) => {
-        setSelectedPayment(payment);
-        setIsViewingReceipt(true);
-        
-        Swal.fire({
-            title: 'فاکتور پرداخت',
-            html: `
-                <div class="text-right p-4">
-                    <h3 class="text-xl font-bold mb-4">رسید پرداخت شهریه</h3>
-                    <div class="space-y-2">
-                        <p><strong>دانش‌آموز:</strong> ${payment.student_name}</p>
-                        <p><strong>مبلغ:</strong> ${payment.formatted_amount}</p>
-                        <p><strong>تاریخ پرداخت:</strong> ${payment.formatted_date}</p>
-                        <p><strong>ماه مربوطه:</strong> ${payment.month_name} ${payment.year}</p>
-                        <p><strong>روش پرداخت:</strong> ${payment.payment_method === 'cash' ? 'نقدی' : 'کارت‌به‌کارت'}</p>
-                        <p><strong>وضعیت:</strong> <span class="${payment.status_info.color} px-2 py-1 rounded">${payment.status_info.label}</span></p>
-                        ${payment.description ? `<p><strong>توضیحات:</strong> ${payment.description}</p>` : ''}
-                    </div>
-                </div>
-            `,
-            showCancelButton: true,
-            confirmButtonText: 'چاپ',
-            cancelButtonText: 'بستن',
-            showCloseButton: true
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.print();
-            }
-        });
-    };
-
-    // Reset Form
-    const resetForm = () => {
-        setPaymentForm({
-            student_id: "",
-            amount: "",
-            payment_date: new Date().toISOString().split('T')[0],
-            month: new Date().getMonth() + 1,
-            year: new Date().getFullYear(),
-            payment_method: "cash",
-            description: ""
-        });
-        setIsAddingPayment(false);
-    };
-
-    // Filter Payments
-    useEffect(() => {
-        let filtered = [...payments];
+        let filtered = paymentsList.filter(p => p.academic_year_id === academicYear.id);
         
         if (searchTerm) {
             filtered = filtered.filter(payment =>
-                payment.student_name.includes(searchTerm) ||
-                payment.student_id.toString().includes(searchTerm)
+                payment.student_name?.includes(searchTerm) ||
+                payment.student_id?.toString().includes(searchTerm)
             );
         }
         
         if (selectedGrade !== "all") {
+            const grade = grades.find(g => g.id === parseInt(selectedGrade));
             filtered = filtered.filter(payment => 
-                payment.student_grade === gradeMap[selectedGrade]?.name
+                payment.student_grade === grade?.grade_name
             );
         }
         
@@ -376,22 +214,431 @@ export default function TuitionManagement() {
         }
         
         setFilteredPayments(filtered);
-    }, [searchTerm, selectedGrade, selectedStatus, selectedMonth, payments]);
+        calculateStats(filtered, students, academicYear);
+    };
 
-    // Chart Data
+    const calculateStats = (paymentsData, studentsData, academicYear) => {
+        const totalPaid = paymentsData
+            .filter(p => p.status === 'C')
+            .reduce((sum, p) => sum + p.net_amount, 0);
+        
+        const studentsInAcademicYear = studentsData.filter(s => s.academic_year_id === academicYear?.id);
+        
+        const studentsByGrade = {};
+        studentsInAcademicYear.forEach(student => {
+            const grade = grades.find(g => g.id === student.grade_id);
+            if (grade) {
+                studentsByGrade[grade.grade_name] = (studentsByGrade[grade.grade_name] || 0) + 1;
+            }
+        });
+        
+        let totalPending = 0;
+        Object.entries(studentsByGrade).forEach(([gradeName, count]) => {
+            const fee = gradeFees[gradeName] || 1500000;
+            const paidForGrade = paymentsData
+                .filter(p => p.status === 'C' && p.student_grade === gradeName)
+                .reduce((sum, p) => sum + p.net_amount, 0);
+            
+            const expectedTotal = count * fee;
+            totalPending += Math.max(0, expectedTotal - paidForGrade);
+        });
+        
+        const monthlyStats = {};
+        const byGrade = {};
+        const byStatus = { C: 0, H: 0, N: 0 };
+        
+        paymentsData.forEach(payment => {
+            const monthKey = `${payment.month}`;
+            if (!monthlyStats[monthKey]) {
+                monthlyStats[monthKey] = { C: 0, H: 0, N: 0 };
+            }
+            monthlyStats[monthKey][payment.status] += payment.net_amount;
+            
+            const gradeName = payment.student_grade;
+            byGrade[gradeName] = (byGrade[gradeName] || 0) + 1;
+            
+            byStatus[payment.status] = (byStatus[payment.status] || 0) + 1;
+        });
+        
+        setStats({
+            totalPaid,
+            totalPending,
+            totalStudents: studentsInAcademicYear.length,
+            monthlyStats,
+            byGrade,
+            byStatus
+        });
+    };
+
+    const fetchAndCalculateChartData = async () => {
+        if (!selectedChartAcademicYear) return;
+        
+        setLoading(true);
+        try {
+            const response = await axiosInstance.get('/TuitionPayment/GetAll');
+            const yearPayments = response.data.filter(p => p.academic_year_id === selectedChartAcademicYear.id);
+            const enrichedYearPayments = enrichPaymentsData(yearPayments, students, grades, classes);
+            calculateStats(enrichedYearPayments, students, selectedChartAcademicYear);
+        } catch (error) {
+            console.error('Error fetching chart data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleFormChange = (e) => {
+        const { name, value } = e.target;
+        setPaymentForm(prev => {
+            const updated = { ...prev, [name]: value };
+            
+            if (['amount', 'discount', 'fine'].includes(name)) {
+                const amount = parseInt(updated.amount) || 0;
+                const discount = parseInt(updated.discount) || 0;
+                const fine = parseInt(updated.fine) || 0;
+                updated.net_amount = amount - discount + fine;
+            }
+            
+            return updated;
+        });
+    };
+
+    const selectStudent = (student) => {
+        const grade = grades.find(g => g.id === student.grade_id);
+        const defaultAmount = gradeFees[grade?.grade_name] || 1500000;
+        
+        setPaymentForm(prev => ({
+            ...prev,
+            student_id: student.id,
+            student_display: `${student.name} ${student.lastname}`,
+            amount: defaultAmount,
+            net_amount: defaultAmount
+        }));
+        setStudentSearch("");
+        setShowStudentDropdown(false);
+    };
+
+    const handleFileChange = (e) => {
+        setSelectedFile(e.target.files[0]);
+    };
+
+    const generateReceiptNumber = () => {
+        return Math.floor(1000000000 + Math.random() * 9000000000);
+    };
+
+    const handleSubmitPayment = async (e) => {
+        e.preventDefault();
+        
+        if (!paymentForm.student_id || !paymentForm.amount || !selectedAcademicYear) {
+            Swal.fire({
+                icon: "error",
+                title: "خطا",
+                text: "لطفا فیلدهای ضروری را پر کنید"
+            });
+            return;
+        }
+
+        setLoading(true);
+        
+        try {
+            const paymentData = {
+                ...paymentForm,
+                student_id: parseInt(paymentForm.student_id),
+                amount: parseInt(paymentForm.amount),
+                discount: parseInt(paymentForm.discount) || 0,
+                fine: parseInt(paymentForm.fine) || 0,
+                net_amount: parseInt(paymentForm.net_amount),
+                month: parseInt(paymentForm.month),
+                receipt_number: generateReceiptNumber(),
+                date: paymentForm.date,
+                due: paymentForm.due,
+                status: paymentForm.status,
+                academic_year_id: selectedAcademicYear.id,
+                attachment_id: 0
+            };
+
+            await axiosInstance.post('/TuitionPayment/Add', paymentData);
+            
+            if (selectedFile) {
+                console.log('File upload will be implemented:', selectedFile);
+            }
+            
+            const updatedPayments = await axiosInstance.get('/TuitionPayment/GetAll');
+            const enrichedPayments = enrichPaymentsData(updatedPayments.data, students, grades, classes);
+            setPayments(enrichedPayments);
+            
+            filterPaymentsByAcademicYear(enrichedPayments, selectedAcademicYear);
+            
+            Swal.fire({
+                icon: "success",
+                title: "موفقیت",
+                text: "پرداخت با موفقیت ثبت شد",
+                timer: 2000
+            });
+            
+            resetForm();
+            
+        } catch (error) {
+            console.error('Error submitting payment:', error);
+            Swal.fire({
+                icon: "error",
+                title: "خطا",
+                text: error.response?.data?.error || "خطا در ثبت پرداخت"
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateStatus = async (paymentId, newStatus) => {
+        setLoading(true);
+        
+        try {
+            const paymentToUpdate = payments.find(p => p.id === paymentId);
+            if (!paymentToUpdate) return;
+
+            const updatedPayment = {
+                ...paymentToUpdate,
+                status: newStatus
+            };
+
+            await axiosInstance.put('/TuitionPayment/Update', updatedPayment);
+            
+            const response = await axiosInstance.get('/TuitionPayment/GetAll');
+            const enrichedPayments = enrichPaymentsData(response.data, students, grades, classes);
+            setPayments(enrichedPayments);
+            
+            filterPaymentsByAcademicYear(enrichedPayments, selectedAcademicYear);
+            
+            Swal.fire({
+                icon: "success",
+                title: "موفقیت",
+                text: "وضعیت پرداخت بروزرسانی شد"
+            });
+        } catch (error) {
+            console.error('Error updating status:', error);
+            Swal.fire({
+                icon: "error",
+                title: "خطا",
+                text: error.response?.data?.error || "خطا در بروزرسانی وضعیت"
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeletePayment = async (paymentId) => {
+        const result = await Swal.fire({
+            title: 'آیا مطمئن هستید؟',
+            text: "این عملیات قابل بازگشت نیست!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'بله، حذف کن',
+            cancelButtonText: 'انصراف'
+        });
+
+        if (result.isConfirmed) {
+            setLoading(true);
+            try {
+                await axiosInstance.delete(`/TuitionPayment/Delete/${paymentId}`);
+                
+                const response = await axiosInstance.get('/TuitionPayment/GetAll');
+                const enrichedPayments = enrichPaymentsData(response.data, students, grades, classes);
+                setPayments(enrichedPayments);
+                
+                filterPaymentsByAcademicYear(enrichedPayments, selectedAcademicYear);
+                
+                Swal.fire({
+                    icon: "success",
+                    title: "موفقیت",
+                    text: "پرداخت با موفقیت حذف شد"
+                });
+            } catch (error) {
+                console.error('Error deleting payment:', error);
+                Swal.fire({
+                    icon: "error",
+                    title: "خطا",
+                    text: error.response?.data?.error || "خطا در حذف پرداخت"
+                });
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
+
+    const handlePrintReceipt = (payment) => {
+        const printWindow = window.open('', '_blank');
+        
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html dir="rtl">
+            <head>
+                <title>رسید پرداخت - ${payment.receipt_number}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+                    .receipt { max-width: 400px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+                    .header { text-align: center; border-bottom: 2px solid #10b981; padding-bottom: 20px; margin-bottom: 20px; }
+                    .header h1 { color: #10b981; margin: 10px 0; }
+                    .receipt-number { background: #f3f4f6; padding: 10px; text-align: center; font-family: monospace; font-size: 18px; border-radius: 5px; margin-bottom: 20px; }
+                    .row { display: flex; justify-content: space-between; margin-bottom: 10px; padding: 5px 0; border-bottom: 1px dashed #e5e7eb; }
+                    .label { font-weight: bold; color: #4b5563; }
+                    .value { color: #1f2937; }
+                    .total { font-size: 18px; font-weight: bold; color: #10b981; }
+                    .status { display: inline-block; padding: 5px 10px; border-radius: 5px; background: ${payment.status === 'C' ? '#10b981' : payment.status === 'H' ? '#f59e0b' : '#ef4444'}; color: white; }
+                    .footer { margin-top: 30px; text-align: center; color: #6b7280; font-size: 12px; }
+                </style>
+            </head>
+            <body>
+                <div class="receipt">
+                    <div class="header">
+                        <h1>رسید پرداخت شهریه</h1>
+                        <p>مدرسه من</p>
+                    </div>
+                    
+                    <div class="receipt-number">
+                        شماره رسید: ${payment.receipt_number}
+                    </div>
+                    
+                    <div class="row">
+                        <span class="label">دانش‌آموز:</span>
+                        <span class="value">${payment.student_name}</span>
+                    </div>
+                    
+                    <div class="row">
+                        <span class="label">پایه و کلاس:</span>
+                        <span class="value">${payment.student_grade} - ${payment.student_class}</span>
+                    </div>
+                    
+                    <div class="row">
+                        <span class="label">ماه:</span>
+                        <span class="value">${payment.month_name}</span>
+                    </div>
+                    
+                    <div class="row">
+                        <span class="label">مبلغ اصلی:</span>
+                        <span class="value">${formatAmount(payment.amount)}</span>
+                    </div>
+                    
+                    ${payment.discount > 0 ? `
+                    <div class="row">
+                        <span class="label">تخفیف:</span>
+                        <span class="value">${formatAmount(payment.discount)}</span>
+                    </div>
+                    ` : ''}
+                    
+                    ${payment.fine > 0 ? `
+                    <div class="row">
+                        <span class="label">جریمه:</span>
+                        <span class="value">${formatAmount(payment.fine)}</span>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="row total">
+                        <span class="label">مبلغ نهایی:</span>
+                        <span class="value">${formatAmount(payment.net_amount)}</span>
+                    </div>
+                    
+                    <div class="row">
+                        <span class="label">تاریخ پرداخت:</span>
+                        <span class="value">${payment.formatted_date}</span>
+                    </div>
+                    
+                    <div class="row">
+                        <span class="label">سررسید:</span>
+                        <span class="value">${payment.formatted_due}</span>
+                    </div>
+                    
+                    <div class="row">
+                        <span class="label">وضعیت:</span>
+                        <span class="value status">${statusMap[payment.status].label}</span>
+                    </div>
+                    
+                    ${payment.description ? `
+                    <div class="row">
+                        <span class="label">توضیحات:</span>
+                        <span class="value">${payment.description}</span>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="footer">
+                        <p>این رسید به صورت الکترونیکی صادر شده است</p>
+                        <p>تاریخ چاپ: ${new Date().toLocaleDateString('fa-IR')}</p>
+                    </div>
+                </div>
+                <script>
+                    window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
+                </script>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+    };
+
+    const resetForm = () => {
+        setPaymentForm({
+            student_id: "",
+            student_display: "",
+            amount: "",
+            month: new Date().getMonth() + 1,
+            discount: 0,
+            fine: 0,
+            net_amount: 0,
+            status: "N",
+            due: new Date().toISOString().split('T')[0],
+            date: new Date().toISOString().split('T')[0],
+            receipt_number: "",
+            description: "",
+            attachment_id: 0,
+            academic_year_id: selectedAcademicYear?.id || null
+        });
+        setSelectedFile(null);
+        setStudentSearch("");
+        setIsAddingPayment(false);
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return "نامشخص";
+        try {
+            const date = new Date(dateString);
+            return new Intl.DateTimeFormat('fa-IR').format(date);
+        } catch {
+            return dateString;
+        }
+    };
+
+    const formatAmount = (amount) => {
+        if (!amount) return "0 تومان";
+        return new Intl.NumberFormat('fa-IR').format(amount) + " تومان";
+    };
+
+    const filteredStudents = students.filter(student => {
+        const searchLower = studentSearch.toLowerCase();
+        const grade = grades.find(g => g.id === student.grade_id);
+        const className = classes.find(c => c.id === student.class_id);
+        return (
+            student.name?.toLowerCase().includes(searchLower) ||
+            student.lastname?.toLowerCase().includes(searchLower) ||
+            student.national_id?.includes(searchLower) ||
+            grade?.grade_name?.toLowerCase().includes(searchLower) ||
+            className?.class_name?.toLowerCase().includes(searchLower)
+        );
+    }).slice(0, 10);
+
     const statusChartData = [
-        { name: "پرداخت شده", value: stats.byStatus.paid, color: "#10B981" },
-        { name: "در انتظار", value: stats.byStatus.pending, color: "#F59E0B" },
-        { name: "معوقه", value: stats.byStatus.overdue, color: "#EF4444" }
+        { name: "پرداخت کامل", value: stats.byStatus.C, color: "#10B981" },
+        { name: "پرداخت نیمه", value: stats.byStatus.H, color: "#F59E0B" },
+        { name: "پرداخت نشده", value: stats.byStatus.N, color: "#EF4444" }
     ];
 
     const monthlyChartData = Object.entries(stats.monthlyStats)
-        .slice(-6)
+        .slice(-12)
         .map(([month, data]) => ({
-            name: month.split('-')[1] + '/' + month.split('-')[0],
-            paid: data.paid || 0,
-            pending: data.pending || 0,
-            overdue: data.overdue || 0
+            name: monthMap[month] || month,
+            paid: data.C || 0,
+            pending: (data.H || 0) + (data.N || 0),
+            overdue: data.N || 0
         }));
 
     const gradeChartData = Object.entries(stats.byGrade).map(([grade, count]) => ({
@@ -403,7 +650,15 @@ export default function TuitionManagement() {
         <div className='min-h-screen bg-gradient-to-br from-gray-50 to-green-50 p-4 lg:p-6'>
             <div className='max-w-7xl mx-auto'>
                 
-                {/* Header */}
+                {loading && (
+                    <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'>
+                        <div className='bg-white rounded-lg p-6'>
+                            <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto'></div>
+                            <p className='text-center mt-4'>در حال بارگذاری...</p>
+                        </div>
+                    </div>
+                )}
+
                 <div className='bg-white rounded-2xl shadow-xl p-6 mb-6'>
                     <div className='flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6'>
                         <div className='flex items-center gap-4'>
@@ -414,7 +669,23 @@ export default function TuitionManagement() {
                                 <h1 className='text-2xl lg:text-3xl font-bold text-gray-800'>
                                     مدیریت پرداخت شهریه
                                 </h1>
-                                <p className='text-gray-600 mt-1'>پیگیری و مدیریت پرداخت‌های ماهانه دانش‌آموزان</p>
+                                <div className='flex items-center gap-2 mt-1'>
+                                    <FaFilter className="text-gray-400" />
+                                    <select
+                                        value={selectedAcademicYear?.id || ''}
+                                        onChange={(e) => {
+                                            const year = academicYears.find(y => y.id === parseInt(e.target.value));
+                                            setSelectedAcademicYear(year);
+                                        }}
+                                        className='border-2 border-gray-300 rounded-lg px-3 py-1 text-sm focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
+                                    >
+                                        {academicYears.map(year => (
+                                            <option key={year.id} value={year.id}>
+                                                {year.title} {year.active ? '(سال جاری)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         
@@ -422,7 +693,7 @@ export default function TuitionManagement() {
                             <div className='text-right'>
                                 <p className='text-sm text-gray-600'>مجموع پرداخت‌ها</p>
                                 <p className='text-2xl font-bold text-green-600'>
-                                    {stats.totalPaid.toLocaleString('fa-IR')} تومان
+                                    {formatAmount(stats.totalPaid)}
                                 </p>
                             </div>
                             <div className='w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center text-white font-bold'>
@@ -432,13 +703,10 @@ export default function TuitionManagement() {
                     </div>
                 </div>
 
-                {/* Main Content */}
                 <div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
                     
-                    {/* Left Column - Stats */}
                     <div className='lg:col-span-1 space-y-6'>
                         
-                        {/* Quick Stats */}
                         <div className='bg-white rounded-2xl shadow-xl p-6'>
                             <h3 className='text-lg font-bold text-gray-800 mb-4'>آمار سریع</h3>
                             <div className='space-y-4'>
@@ -447,7 +715,7 @@ export default function TuitionManagement() {
                                         <div>
                                             <p className='text-sm text-gray-600'>پرداخت شده</p>
                                             <p className='text-xl font-bold text-green-700'>
-                                                {stats.totalPaid.toLocaleString('fa-IR')} تومان
+                                                {formatAmount(stats.totalPaid)}
                                             </p>
                                         </div>
                                         <FaMoneyBillWave className="w-8 h-8 text-green-600" />
@@ -459,7 +727,7 @@ export default function TuitionManagement() {
                                         <div>
                                             <p className='text-sm text-gray-600'>در انتظار پرداخت</p>
                                             <p className='text-xl font-bold text-yellow-700'>
-                                                {stats.totalPending.toLocaleString('fa-IR')} تومان
+                                                {formatAmount(stats.totalPending)}
                                             </p>
                                         </div>
                                         <FaCalendarAlt className="w-8 h-8 text-yellow-600" />
@@ -478,7 +746,6 @@ export default function TuitionManagement() {
                             </div>
                         </div>
                         
-                        {/* Payment Status */}
                         <div className='bg-white rounded-2xl shadow-xl p-6'>
                             <h3 className='text-lg font-bold text-gray-800 mb-4'>وضعیت پرداخت‌ها</h3>
                             <div className='space-y-3'>
@@ -494,7 +761,6 @@ export default function TuitionManagement() {
                             </div>
                         </div>
                         
-                        {/* Quick Actions */}
                         <div className='bg-white rounded-2xl shadow-xl p-6'>
                             <h3 className='text-lg font-bold text-gray-800 mb-4'>عملیات سریع</h3>
                             <div className='space-y-3'>
@@ -506,7 +772,7 @@ export default function TuitionManagement() {
                                     ثبت پرداخت جدید
                                 </button>
                                 <button
-                                    onClick={() => window.location.reload()}
+                                    onClick={fetchInitialData}
                                     className='w-full p-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-colors duration-300 flex items-center justify-center gap-2'
                                 >
                                     <FaHistory className="w-5 h-5" />
@@ -517,7 +783,7 @@ export default function TuitionManagement() {
                                         Swal.fire({
                                             icon: 'info',
                                             title: 'خروجی Excel',
-                                            text: 'این قابلیت در نسخه Mock فعال نیست'
+                                            text: 'این قابلیت در حال توسعه است'
                                         });
                                     }}
                                     className='w-full p-3 border-2 border-purple-600 text-purple-600 hover:bg-purple-50 rounded-lg font-medium transition-colors duration-300 flex items-center justify-center gap-2'
@@ -529,10 +795,8 @@ export default function TuitionManagement() {
                         </div>
                     </div>
                     
-                    {/* Right Column - Main Content */}
                     <div className='lg:col-span-3'>
                         
-                        {/* Tabs Navigation */}
                         <div className='bg-white rounded-2xl shadow-xl mb-6'>
                             <div className='flex overflow-x-auto border-b border-gray-200'>
                                 <button
@@ -547,26 +811,12 @@ export default function TuitionManagement() {
                                 >
                                     آمار و نمودارها
                                 </button>
-                                <button
-                                    onClick={() => {
-                                        Swal.fire({
-                                            icon: 'info',
-                                            title: 'گزارشات',
-                                            text: 'این بخش در نسخه Mock نمایش داده می‌شود'
-                                        });
-                                    }}
-                                    className={`flex-1 min-w-[120px] py-4 text-center font-medium transition-colors duration-300 ${activeTab === "reports" ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-600 hover:text-gray-800'}`}
-                                >
-                                    گزارشات
-                                </button>
                             </div>
                         </div>
                         
-                        {/* Payments Tab */}
                         {activeTab === "payments" && (
                             <div className='space-y-6'>
                                 
-                                {/* Add Payment Form */}
                                 {isAddingPayment && (
                                     <div className='bg-white rounded-2xl shadow-xl p-6'>
                                         <div className='flex justify-between items-center mb-6'>
@@ -581,26 +831,47 @@ export default function TuitionManagement() {
                                         
                                         <form onSubmit={handleSubmitPayment}>
                                             <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
-                                                <div>
+                                                <div className='relative' ref={studentDropdownRef}>
                                                     <label className='block mb-2 text-sm font-medium text-gray-700'>دانش‌آموز *</label>
-                                                    <select
-                                                        name="student_id"
-                                                        value={paymentForm.student_id}
-                                                        onChange={handleFormChange}
+                                                    <input
+                                                        type="text"
+                                                        value={studentSearch}
+                                                        onChange={(e) => {
+                                                            setStudentSearch(e.target.value);
+                                                            setShowStudentDropdown(true);
+                                                        }}
+                                                        onFocus={() => setShowStudentDropdown(true)}
                                                         className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
-                                                        required
-                                                    >
-                                                        <option value="">انتخاب دانش‌آموز</option>
-                                                        {students.map(student => (
-                                                            <option key={student.id} value={student.id}>
-                                                                {student.name} {student.lastname} - {gradeMap[student.grade_id]?.name}
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                        placeholder="جستجوی دانش‌آموز..."
+                                                        autoComplete="off"
+                                                    />
+                                                    {showStudentDropdown && filteredStudents.length > 0 && (
+                                                        <div className='absolute z-10 w-full mt-1 bg-white border-2 border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto'>
+                                                            {filteredStudents.map(student => {
+                                                                const grade = grades.find(g => g.id === student.grade_id);
+                                                                const className = classes.find(c => c.id === student.class_id);
+                                                                return (
+                                                                    <div
+                                                                        key={student.id}
+                                                                        className='p-3 hover:bg-green-50 cursor-pointer border-b last:border-b-0'
+                                                                        onClick={() => selectStudent(student)}
+                                                                    >
+                                                                        <div className='font-medium'>{student.name} {student.lastname}</div>
+                                                                        <div className='text-sm text-gray-600'>{grade?.grade_name} - {className?.class_name}</div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                    {paymentForm.student_id && (
+                                                        <div className='mt-2 p-2 bg-green-50 rounded-lg'>
+                                                            <span className='text-sm text-green-700'>انتخاب شده: {paymentForm.student_display}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 
                                                 <div>
-                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>مبلغ (تومان) *</label>
+                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>مبلغ اصلی (تومان) *</label>
                                                     <input
                                                         type="number"
                                                         name="amount"
@@ -613,13 +884,37 @@ export default function TuitionManagement() {
                                                 </div>
                                                 
                                                 <div>
-                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>تاریخ پرداخت</label>
+                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>تخفیف (تومان)</label>
                                                     <input
-                                                        type="date"
-                                                        name="payment_date"
-                                                        value={paymentForm.payment_date}
+                                                        type="number"
+                                                        name="discount"
+                                                        value={paymentForm.discount}
                                                         onChange={handleFormChange}
                                                         className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
+                                                        placeholder="مبلغ تخفیف"
+                                                    />
+                                                </div>
+                                                
+                                                <div>
+                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>جریمه (تومان)</label>
+                                                    <input
+                                                        type="number"
+                                                        name="fine"
+                                                        value={paymentForm.fine}
+                                                        onChange={handleFormChange}
+                                                        className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
+                                                        placeholder="مبلغ جریمه"
+                                                    />
+                                                </div>
+                                                
+                                                <div>
+                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>مبلغ نهایی</label>
+                                                    <input
+                                                        type="number"
+                                                        name="net_amount"
+                                                        value={paymentForm.net_amount}
+                                                        readOnly
+                                                        className='w-full p-3 border-2 border-gray-300 bg-gray-50 rounded-lg'
                                                     />
                                                 </div>
                                                 
@@ -638,29 +933,47 @@ export default function TuitionManagement() {
                                                 </div>
                                                 
                                                 <div>
-                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>روش پرداخت</label>
+                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>وضعیت پرداخت</label>
                                                     <select
-                                                        name="payment_method"
-                                                        value={paymentForm.payment_method}
+                                                        name="status"
+                                                        value={paymentForm.status}
                                                         onChange={handleFormChange}
                                                         className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
                                                     >
-                                                        <option value="cash">نقدی</option>
-                                                        <option value="bank">کارت به کارت</option>
-                                                        <option value="online">درگاه آنلاین</option>
+                                                        <option value="C">پرداخت کامل</option>
+                                                        <option value="H">پرداخت نیمه</option>
+                                                        <option value="N">پرداخت نشده</option>
                                                     </select>
                                                 </div>
                                                 
                                                 <div>
-                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>سال</label>
+                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>تاریخ پرداخت</label>
                                                     <input
-                                                        type="number"
-                                                        name="year"
-                                                        value={paymentForm.year}
+                                                        type="date"
+                                                        name="date"
+                                                        value={paymentForm.date}
                                                         onChange={handleFormChange}
                                                         className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
-                                                        min="1400"
-                                                        max="1500"
+                                                    />
+                                                </div>
+                                                
+                                                <div>
+                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>تاریخ سررسید</label>
+                                                    <input
+                                                        type="date"
+                                                        name="due"
+                                                        value={paymentForm.due}
+                                                        onChange={handleFormChange}
+                                                        className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
+                                                    />
+                                                </div>
+                                                
+                                                <div>
+                                                    <label className='block mb-2 text-sm font-medium text-gray-700'>فایل ضمیمه</label>
+                                                    <input
+                                                        type="file"
+                                                        onChange={handleFileChange}
+                                                        className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
                                                     />
                                                 </div>
                                             </div>
@@ -680,9 +993,10 @@ export default function TuitionManagement() {
                                             <div className='flex gap-3 mt-6'>
                                                 <button
                                                     type="submit"
-                                                    className='flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors duration-300'
+                                                    disabled={loading}
+                                                    className='flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed'
                                                 >
-                                                    ثبت پرداخت
+                                                    {loading ? 'در حال ثبت...' : 'ثبت پرداخت'}
                                                 </button>
                                                 <button
                                                     type="button"
@@ -696,7 +1010,6 @@ export default function TuitionManagement() {
                                     </div>
                                 )}
                                 
-                                {/* Search and Filters */}
                                 <div className='bg-white rounded-2xl shadow-xl p-6'>
                                     <div className='flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6'>
                                         <h3 className='text-xl font-bold text-gray-800'>لیست پرداخت‌ها</h3>
@@ -709,7 +1022,7 @@ export default function TuitionManagement() {
                                                 ثبت پرداخت جدید
                                             </button>
                                             <button
-                                                onClick={() => window.location.reload()}
+                                                onClick={fetchInitialData}
                                                 className='px-6 py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-colors duration-300 flex items-center gap-2'
                                             >
                                                 <FaHistory className="w-5 h-5" />
@@ -726,10 +1039,10 @@ export default function TuitionManagement() {
                                                     type="text"
                                                     value={searchTerm}
                                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                                    className='w-full p-3 pl-10 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
+                                                    className='w-full p-3 pr-10 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
                                                     placeholder="نام دانش‌آموز..."
                                                 />
-                                                <FaSearch className="absolute right-3 top-3.5 text-gray-400" />
+                                                <FaSearch className="absolute left-3 top-3.5 text-gray-400" />
                                             </div>
                                         </div>
                                         
@@ -741,8 +1054,8 @@ export default function TuitionManagement() {
                                                 className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
                                             >
                                                 <option value="all">همه پایه‌ها</option>
-                                                {Object.entries(gradeMap).map(([id, grade]) => (
-                                                    <option key={id} value={id}>{grade.name}</option>
+                                                {grades.map(grade => (
+                                                    <option key={grade.id} value={grade.id}>{grade.grade_name}</option>
                                                 ))}
                                             </select>
                                         </div>
@@ -755,9 +1068,9 @@ export default function TuitionManagement() {
                                                 className='w-full p-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
                                             >
                                                 <option value="all">همه وضعیت‌ها</option>
-                                                <option value="paid">پرداخت شده</option>
-                                                <option value="pending">در انتظار</option>
-                                                <option value="overdue">معوقه</option>
+                                                <option value="C">پرداخت کامل</option>
+                                                <option value="H">پرداخت نیمه</option>
+                                                <option value="N">پرداخت نشده</option>
                                             </select>
                                         </div>
                                         
@@ -776,85 +1089,99 @@ export default function TuitionManagement() {
                                         </div>
                                     </div>
                                     
-                                    {/* Payments Table */}
                                     <div className='overflow-x-auto'>
                                         <div className='max-h-[500px] overflow-y-auto border border-gray-200 rounded-lg'>
                                             <table className='w-full'>
                                                 <thead className='bg-gray-50 sticky top-0 z-10'>
                                                     <tr>
+                                                        <th className='p-4 text-right font-semibold text-gray-700'>شماره رسید</th>
                                                         <th className='p-4 text-right font-semibold text-gray-700'>دانش‌آموز</th>
-                                                        <th className='p-4 text-right font-semibold text-gray-700'>مبلغ</th>
+                                                        <th className='p-4 text-right font-semibold text-gray-700'>مبلغ نهایی</th>
                                                         <th className='p-4 text-right font-semibold text-gray-700'>تاریخ/ماه</th>
                                                         <th className='p-4 text-right font-semibold text-gray-700'>وضعیت</th>
                                                         <th className='p-4 text-right font-semibold text-gray-700'>عملیات</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className='divide-y divide-gray-200'>
-                                                    {filteredPayments.slice(0, 50).map((payment) => (
-                                                        <tr key={payment.id} className='hover:bg-gray-50'>
-                                                            <td className='p-4'>
-                                                                <div>
-                                                                    <div className='font-medium text-gray-800'>{payment.student_name}</div>
-                                                                    <div className='text-sm text-gray-600'>{payment.student_grade} - {payment.student_class}</div>
-                                                                </div>
-                                                            </td>
-                                                            <td className='p-4'>
-                                                                <div className='font-bold text-gray-800'>{payment.amount.toLocaleString('fa-IR')} تومان</div>
-                                                                <div className='text-sm text-gray-600'>{payment.month_name} {payment.year}</div>
-                                                            </td>
-                                                            <td className='p-4'>
-                                                                <div className='text-gray-600'>{payment.formatted_date}</div>
-                                                                <div className='text-sm text-gray-500'>
-                                                                    {payment.payment_method === 'cash' ? 'نقدی' : 
-                                                                     payment.payment_method === 'bank' ? 'کارت‌به‌کارت' : 'آنلاین'}
-                                                                </div>
-                                                            </td>
-                                                            <td className='p-4'>
-                                                                <span className={`px-3 py-1 rounded-full text-sm font-medium ${payment.status_info.color}`}>
-                                                                    {payment.status_info.label}
-                                                                </span>
-                                                            </td>
-                                                            <td className='p-4'>
-                                                                <div className='flex gap-2'>
-                                                                    <button
-                                                                        onClick={() => handleViewReceipt(payment)}
-                                                                        className='p-2 text-green-600 hover:bg-green-50 rounded-lg'
-                                                                        title='مشاهده فاکتور'
-                                                                    >
-                                                                        <FaReceipt className="w-4 h-4" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleUpdateStatus(payment.id, 'paid')}
-                                                                        className='p-2 text-blue-600 hover:bg-blue-50 rounded-lg'
-                                                                        title='تایید پرداخت'
-                                                                        disabled={payment.status === 'paid'}
-                                                                    >
-                                                                        ✓
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleUpdateStatus(payment.id, 'overdue')}
-                                                                        className='p-2 text-red-600 hover:bg-red-50 rounded-lg'
-                                                                        title='علامت‌گذاری معوقه'
-                                                                        disabled={payment.status === 'overdue'}
-                                                                    >
-                                                                        ⚠
-                                                                    </button>
-                                                                    <button 
-                                                                        className='p-2 text-gray-600 hover:bg-gray-50 rounded-lg' 
-                                                                        title='چاپ'
-                                                                        onClick={() => window.print()}
-                                                                    >
-                                                                        <FaPrint className="w-4 h-4" />
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {filteredPayments.slice(0, 50).map((payment) => {
+                                                        const StatusIcon = statusMap[payment.status].icon;
+                                                        return (
+                                                            <tr key={payment.id} className='hover:bg-gray-50'>
+                                                                <td className='p-4 font-mono text-sm'>
+                                                                    {payment.receipt_number}
+                                                                </td>
+                                                                <td className='p-4'>
+                                                                    <div>
+                                                                        <div className='font-medium text-gray-800'>{payment.student_name}</div>
+                                                                        <div className='text-sm text-gray-600'>{payment.student_grade} - {payment.student_class}</div>
+                                                                    </div>
+                                                                </td>
+                                                                <td className='p-4'>
+                                                                    <div className='font-bold text-gray-800'>{formatAmount(payment.net_amount)}</div>
+                                                                    <div className='text-xs text-gray-500'>
+                                                                        {payment.discount > 0 && `تخفیف: ${formatAmount(payment.discount)}`}
+                                                                        {payment.fine > 0 && ` جریمه: ${formatAmount(payment.fine)}`}
+                                                                    </div>
+                                                                </td>
+                                                                <td className='p-4'>
+                                                                    <div className='text-gray-600'>{payment.formatted_date}</div>
+                                                                    <div className='text-sm text-gray-500'>{payment.month_name}</div>
+                                                                </td>
+                                                                <td className='p-4'>
+                                                                    <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1 w-fit ${statusMap[payment.status].color}`}>
+                                                                        <StatusIcon className="w-3 h-3" />
+                                                                        {statusMap[payment.status].label}
+                                                                    </span>
+                                                                </td>
+                                                                <td className='p-4'>
+                                                                    <div className='flex gap-2'>
+                                                                        <button
+                                                                            onClick={() => handlePrintReceipt(payment)}
+                                                                            className='p-2 text-green-600 hover:bg-green-50 rounded-lg'
+                                                                            title='چاپ رسید'
+                                                                        >
+                                                                            <FaPrint className="w-4 h-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleUpdateStatus(payment.id, 'C')}
+                                                                            className='p-2 text-blue-600 hover:bg-blue-50 rounded-lg'
+                                                                            title='تایید کامل پرداخت'
+                                                                            disabled={payment.status === 'C'}
+                                                                        >
+                                                                            <FaCheck className="w-4 h-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleUpdateStatus(payment.id, 'H')}
+                                                                            className='p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg'
+                                                                            title='نیمه پرداخت'
+                                                                            disabled={payment.status === 'H'}
+                                                                        >
+                                                                            <FaAdjust className="w-4 h-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleUpdateStatus(payment.id, 'N')}
+                                                                            className='p-2 text-red-600 hover:bg-red-50 rounded-lg'
+                                                                            title='پرداخت نشده'
+                                                                            disabled={payment.status === 'N'}
+                                                                        >
+                                                                            <FaTimes className="w-4 h-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleDeletePayment(payment.id)}
+                                                                            className='p-2 text-red-600 hover:bg-red-50 rounded-lg'
+                                                                            title='حذف'
+                                                                        >
+                                                                            <FaTrash className="w-4 h-4" />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
                                         
-                                        {/* No Results */}
                                         {filteredPayments.length === 0 && (
                                             <div className='text-center py-12 border border-gray-200 rounded-lg mt-4'>
                                                 <div className='text-gray-400 mb-4'>
@@ -869,11 +1196,29 @@ export default function TuitionManagement() {
                             </div>
                         )}
                         
-                        {/* Charts Tab */}
                         {activeTab === "charts" && (
                             <div className='space-y-6'>
+                                <div className='bg-white rounded-2xl shadow-xl p-6'>
+                                    <div className='flex justify-between items-center mb-6'>
+                                        <h3 className='text-xl font-bold text-gray-800'>انتخاب سال تحصیلی</h3>
+                                        <select
+                                            value={selectedChartAcademicYear?.id || ''}
+                                            onChange={(e) => {
+                                                const year = academicYears.find(y => y.id === parseInt(e.target.value));
+                                                setSelectedChartAcademicYear(year);
+                                            }}
+                                            className='border-2 border-gray-300 rounded-lg px-4 py-2 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none'
+                                        >
+                                            {academicYears.map(year => (
+                                                <option key={year.id} value={year.id}>
+                                                    {year.title} {year.active ? '(سال جاری)' : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                                
                                 <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
-                                    {/* Payment Status Chart */}
                                     <div className='bg-white rounded-2xl shadow-xl p-6'>
                                         <h3 className='text-xl font-bold text-gray-800 mb-6'>وضعیت پرداخت‌ها</h3>
                                         <div className='h-80'>
@@ -900,26 +1245,24 @@ export default function TuitionManagement() {
                                         </div>
                                     </div>
                                     
-                                    {/* Monthly Payments Chart */}
                                     <div className='bg-white rounded-2xl shadow-xl p-6'>
-                                        <h3 className='text-xl font-bold text-gray-800 mb-6'>پرداخت‌های ۶ ماه اخیر</h3>
+                                        <h3 className='text-xl font-bold text-gray-800 mb-6'>پرداخت‌های ماهانه</h3>
                                         <div className='h-80'>
                                             <ResponsiveContainer width="100%" height="100%">
                                                 <BarChart data={monthlyChartData}>
                                                     <CartesianGrid strokeDasharray="3 3" />
                                                     <XAxis dataKey="name" />
                                                     <YAxis />
-                                                    <Tooltip formatter={(value) => [`${value.toLocaleString('fa-IR')} تومان`, 'مبلغ']} />
+                                                    <Tooltip formatter={(value) => [formatAmount(value), 'مبلغ']} />
                                                     <Legend />
-                                                    <Bar dataKey="paid" name="پرداخت شده" fill="#10B981" />
+                                                    <Bar dataKey="paid" name="پرداخت کامل" fill="#10B981" />
                                                     <Bar dataKey="pending" name="در انتظار" fill="#F59E0B" />
-                                                    <Bar dataKey="overdue" name="معوقه" fill="#EF4444" />
+                                                    <Bar dataKey="overdue" name="پرداخت نشده" fill="#EF4444" />
                                                 </BarChart>
                                             </ResponsiveContainer>
                                         </div>
                                     </div>
                                     
-                                    {/* Grade Distribution */}
                                     <div className='bg-white rounded-2xl shadow-xl p-6 lg:col-span-2'>
                                         <h3 className='text-xl font-bold text-gray-800 mb-6'>توزیع پرداخت‌ها بر اساس پایه</h3>
                                         <div className='h-80'>
@@ -941,10 +1284,9 @@ export default function TuitionManagement() {
                     </div>
                 </div>
                 
-                {/* Footer */}
                 <div className='mt-8 text-center text-gray-500 text-sm'>
-                    <p>سیستم مدیریت پرداخت شهریه مدرسه من - نسخه Mock</p>
-                    <p className='mt-1'>تمام داده‌ها به صورت نمونه‌سازی شده نمایش داده می‌شوند</p>
+                    <p>سیستم مدیریت پرداخت شهریه مدرسه من</p>
+                    <p className='mt-1'>سال تحصیلی جاری: {selectedAcademicYear?.title || 'نامشخص'}</p>
                 </div>
             </div>
         </div>

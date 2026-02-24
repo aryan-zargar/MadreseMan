@@ -89,10 +89,12 @@ export default function BudgetManagement() {
     const totalExpenses = transactions
         .filter(t => t.is_deposit == false)
         .reduce((sum, t) => sum + t.transaction_amount, 0)
-    var totalAllocated = totalIncome - totalExpenses
+    var totalAllocated = totalExpenses - totalIncome
+    var totalBudgetAmount = 0
     for (let index = 0; index < budgets.length; index++) {
         const element = budgets[index];
         totalAllocated += element.budget_amount
+        totalBudgetAmount += element.budget_amount
     }
 
     // Handle budget click
@@ -536,13 +538,8 @@ export default function BudgetManagement() {
                         </div>
                     </div>
                 </div>
-
-                {/* Main Content Grid */}
                 <div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
-                    {/* Left Column - Authentication & Quick Stats */}
                     <div className='lg:col-span-1 space-y-6'>
-
-                        {/* Quick Stats */}
                         <div className='bg-white rounded-2xl shadow-xl p-6'>
                             <h3 className='text-lg font-bold text-gray-800 mb-4'>خلاصه مالی</h3>
 
@@ -567,6 +564,14 @@ export default function BudgetManagement() {
                                     <div className='flex justify-between items-center mb-2'>
                                         <span className='text-sm text-gray-600'>واریز شده</span>
                                         <span className='text-lg font-bold text-green-700'>{formatCurrency(totalIncome)}</span>
+                                    </div>
+                                </div>
+                                <div className='bg-gradient-to-r from-sky-50 to-blue-50 rounded-xl p-4 border border-blue-200'>
+                                    <div className='flex justify-center items-center '>
+                                        <span className='text-sm text-gray-600'>مجموع بودجه ها</span>
+                                    </div>
+                                    <div className='flex justify-center items-center mb-2'>
+                                        <span className='text-lg font-bold text-blue-700'>{formatCurrency(totalBudgetAmount)}</span>
                                     </div>
                                 </div>
 
@@ -814,9 +819,6 @@ export default function BudgetManagement() {
                                         })}
                                     </div>
                                 </div>
-
-                                {/* Quick Chart */}
-
                             </div>
                         )}
 
